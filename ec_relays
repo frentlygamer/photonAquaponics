@@ -1,0 +1,258 @@
+// As of 3/26/17 this is the production branch of this project. Please dont edit. Fork if needed.
+//       6/15/17 EDIT
+// Photon 1 Pins                                              Photon 2 Pins
+// D0-control 120V socket 2               A0-                 D0-Float Sensors power [Aviation socket 2 Pin 1]                  A0- Temperature signal input
+// D1-control 120V socket 2               A1-                 D1-Float Sensor 1 read [Aviation socket 2 Pin 2]                 A1-
+// D2-control 120V socket 1               A2-                 D2-Float Sensor 2 read [Aviation socket 2 Pin 4]                 A2-
+// D3-control 120V socket 1                                   D3- Temperature sensor power [Avaiation socket 1 Pin 2]
+// D4-control 12V solenoid                                    D4-
+// D5-control 12V solenoid                                    D5-
+// D6-                                                        D6-
+//
+// Due to the size of the wires we are using for the power we need to activate both pins in each pair to 
+// get the relay to actuate. 
+//
+//
+//
+//
+// Aviation socket 1                                         Aviation socket 2
+// 1.Solenoid 12VDC powerline (power supply 12V)             1.Float Sensors Power [both] (D0 on Photon 2)
+// 2.Temp power (coming from D3 Photon 2)                    2.Float Sensor 1 read (D1 on Photon 2)
+// 3.Solenoid ground (power supply ground)                   3.
+// 4.Temp sensor signal (from A0 Photon 2)                   4.Float Sensor 2 read (D2 on Photon 2)    
+// 5.Temp sensor ground (power supply ground)                5.
+//
+//
+// we are using the "Particle.function" function to actuate the relays to pass "on" or "off" which turn on
+// and off the power sockets and solenoid valves. 
+//
+// This is to be a build for photon number 1 on the 3 relay board rev of the project.
+//
+//
+//  
+// 
+//  THIS IS THE CODEBASE FOR PHOTON 1           THIS IS THE CODEBASE FOR PHOTON 1           
+//                      THIS IS THE CODEBASE FOR PHOTON 1
+//
+//
+//
+//
+
+//values
+double EC=0;
+double TDS=0;
+double SAL=0;
+double GRAV=6;
+double f_ec;
+double f_tds;
+double f_sal;
+double f_grav;
+int Minute = Time.minute();
+
+//OUTPUT pins
+
+
+int Socket1POWa=D2;                   // D2 and D3  are connected to 120v socket number 1 (Mix Pump)
+int Socket1POWb=D3;
+
+int Socket2POWa=D0;                   // D0 and D1  are connected to 120v socket number 2 (Drain Pump)
+int Socket2POWb=D1;
+
+int Socket3POWa=D4;                   // D4 and D5  are connected to 12v solenoid relay on aviation socket 1 (solenoid)
+int Socket3POWb=D5;
+
+
+//INPUT_PULLDOWN pins
+
+
+//Strings!!!
+
+String ec_inputstring = "";                              //a string to hold incoming data from the PC
+String ec_sensorstring = "";                             //a string to hold the data from the Atlas Scientific product
+boolean ec_input_string_complete = false;                //have we received all the data from the PC
+boolean ec_sensor_string_complete = false;               //have we received all the data from the Atlas Scientific product
+//--------------------------- begin setup---------------------------------------
+
+void setup() {                                        //set up the hardware
+  Serial.begin(9600);                                 //set baud rate for the hardware serial port_0 to 9600
+  Serial1.begin(9600);                               //set baud rate for the software serial port to 9600
+
+  ec_inputstring.reserve(10);
+  ec_sensorstring.reserve(30);
+  
+  Particle.variable("ec", EC);
+  Particle.variable("tds", TDS);
+  Particle.variable("sal", SAL);
+  Particle.variable("grav", GRAV);
+
+  
+  
+  Particle.function("sock1", sock1tog);                     // this is the function that will allow hardware control through the web.
+  //Particle.function("sock2", sock2tog);
+  //Particle.function("sock3", sock3tog);
+  
+  
+ 
+  pinMode(Socket1POWa, OUTPUT);              
+  pinMode(Socket1POWb, OUTPUT);
+  pinMode(Socket2POWa, OUTPUT);              
+  pinMode(Socket2POWb, OUTPUT);
+  pinMode(Socket3POWa, OUTPUT);              
+  pinMode(Socket3POWb, OUTPUT);
+
+  digitalWrite(Socket1POWa,LOW);           
+  digitalWrite(Socket1POWb,LOW);
+  digitalWrite(Socket2POWa,LOW);           
+  digitalWrite(Socket2POWb,LOW);
+  digitalWrite(Socket3POWa,LOW);           
+  digitalWrite(Socket3POWb,LOW);
+  
+  }
+
+
+void serialEvent() {                                  //if the hardware serial port_0 receives a char
+
+  ec_inputstring = Serial.readStringUntil(13);           //read the string until we see a <CR>
+  ec_input_string_complete = true;                       //set the flag used to tell if we have received a completed string from the PC
+}
+
+
+void loop() { 
+    
+
+    if (ec_input_string_complete) {                        //if a string from the PC has been received in its entirety
+    Serial1.print(ec_inputstring);                      //send that string to the Atlas Scientific product
+    Serial1.print('\r');                             //add a <CR> to the end of the string
+    ec_inputstring = "";                                 //clear the string
+    ec_input_string_complete = false;                    //reset the flag used to tell if we have received a completed string from the PC
+  }
+
+  if (Serial1.available() > 0) {                     //if we see that the Atlas Scientific product has sent a character
+    char ec_inchar = (char)Serial1.read();              //get the char we just received
+    ec_sensorstring += ec_inchar;                           //add the char to the var called sensorstring
+    if (ec_inchar == '\r') {                             //if the incoming character is a <CR>
+      ec_sensor_string_complete = true;                  //set the flag
+    }
+  }
+  if (ec_sensor_string_complete == true) {               //if a string from the Atlas Scientific product has been received in its entirety
+    if (isdigit(ec_sensorstring[0]) == false) {          //if the first character in the string is a digit
+      Serial.println(ec_sensorstring);                   //send that string to the PC's serial monitor
+    }
+    else                                              //if the first character in the string is NOT a digit
+    {
+      print_EC_data();                                //then call this function 
+    }
+    ec_sensorstring = "";                                //clear the string
+    ec_sensor_string_complete = false;                   //reset the flag used to tell if we have received a completed string from the Atlas Scientific product
+    
+  }
+  if (Minute % 5 == 0){
+        digitalWrite(Socket2POWa,LOW);
+        digitalWrite(Socket2POWb,LOW);
+  }
+  else{
+        digitalWrite(Socket2POWa,HIGH);
+        digitalWrite(Socket2POWb,HIGH);
+  }
+  
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void print_EC_data(void) {                            //this function will pars the string  
+
+  char ec_sensorstring_array[30];                        //we make a char array
+  char *EC;                                           //char pointer used in string parsing
+  char *TDS;                                          //char pointer used in string parsing
+  char *SAL;                                          //char pointer used in string parsing
+  char *GRAV;                                         //char pointer used in string parsing
+  double f_ecbuf;
+  double f_tdsbuf;
+  double f_salbuf;
+  double f_gravbuf;
+  
+  
+  
+  ec_sensorstring.toCharArray(ec_sensorstring_array, 30);   //convert the string to a char array 
+  EC = strtok(ec_sensorstring_array, ",");               //let's pars the array at each comma
+  TDS = strtok(NULL, ",");                            //let's pars the array at each comma
+  SAL = strtok(NULL, ",");                            //let's pars the array at each comma
+  GRAV = strtok(NULL, ",");                           //let's pars the array at each comma
+
+  Serial.print("EC:");                                //we now print each value we parsed separately
+  Serial.println(EC);                                 //this is the EC value
+
+  Serial.print("TDS:");                               //we now print each value we parsed separately
+  Serial.println(TDS);                                //this is the TDS value
+
+  Serial.print("SAL:");                               //we now print each value we parsed separately
+  Serial.println(SAL);                                //this is the salinity value
+
+  Serial.print("GRAV:");                              //we now print each value we parsed separately
+  Serial.println(GRAV);                               //this is the specific gravity
+  Serial.println();                                   //this just makes the output easier to read
+  
+  f_ecbuf=atof(EC);
+  f_tdsbuf=atof(TDS);
+  f_salbuf=atof(SAL);
+  f_gravbuf=atof(GRAV);
+  
+  f_ec= f_ecbuf;                                     //uncomment this line to convert the char to a float
+  f_tds= f_tdsbuf;
+  f_sal= f_salbuf;
+  f_grav= f_gravbuf;
+  
+  Particle.variable("ec", f_ec);
+  Particle.variable("tds", f_tds);
+  Particle.variable("sal", f_sal);
+  Particle.variable("grav", f_grav);
+  
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+int sock1tog(String command)              // string command recieved from the cloud, the choices will be on or off and the responses will be 0 or 1
+
+{
+    if (command=="1") {                    // if the command recieved is on
+        digitalWrite(Socket1POWa,HIGH);       // send volts out pins
+        digitalWrite(Socket1POWb,HIGH);
+        
+        return 1;
+    }
+    else if (command=="2") {
+        digitalWrite(Socket1POWa,LOW);
+        digitalWrite(Socket1POWb,LOW);
+        
+        return 0;
+    }
+    else if (command=="3") {                    // if the command recieved is on
+        digitalWrite(Socket2POWa,HIGH);       // send volts out pins
+        digitalWrite(Socket2POWb,HIGH);
+        return 1;
+    }
+    else if (command=="4") {
+        digitalWrite(Socket2POWa,LOW);
+        digitalWrite(Socket2POWb,LOW);
+        return 0;
+    }
+    else if (command=="5") {                    // if the command recieved is on
+        digitalWrite(Socket3POWa,HIGH);       // send volts out pins
+        digitalWrite(Socket3POWb,HIGH);
+        return 1;
+    }
+    else if (command=="6") {
+        digitalWrite(Socket3POWa,LOW);
+        digitalWrite(Socket3POWb,LOW);
+        
+        return 0;
+    }
+    else {
+        return -1;
+    }
+}
