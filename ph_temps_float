@@ -1,0 +1,161 @@
+// As of 3/28/17 this is the second production branch of this project. 
+//
+// This code is for Photon 2 which will be controlling pH and temperature and the floats
+//
+// Photon 1 Pins                                              Photon 2 Pins
+// D0-control 120V socket 2               A0-                 D0-Float Sensors power [Aviation socket 2 Pin 1]                  A0- Temperature signal input
+// D1-control 120V socket 2               A1-                 D1-Float Sensor 1 read [Aviation socket 2 Pin 2]                 A1-
+// D2-control 120V socket 1               A2-                 D2-Float Sensor 2 read [Aviation socket 2 Pin 4]                 A2-
+// D3-control 120V socket 1                                   D3- Temperature sensor power [Avaiation socket 1 Pin 2]
+// D4-control 12V solenoid                                    D4-
+// D5-control 12V solenoid                                    D5-
+// D6-                                                        D6-
+//
+// Due to the size of the wires we are using for the power we need to activate both pins in each pair to 
+// get the relay to actuate. 
+//
+//
+//
+//
+// Aviation socket 1                                         Aviation socket 2
+// 1.Solenoid 12VDC powerline (power supply 12V)             1.Float Sensors Power [both] (D0 on Photon 2)
+// 2.Temp power (coming from D3 Photon 2)                    2.Float Sensor 1 read (D1 on Photon 2)
+// 3.Solenoid ground (power supply ground)                   3.
+// 4.Temp sensor signal (from A0 Photon 2)                   4.Float Sensor 2 read (D2 on Photon 2)    
+// 5.Temp sensor ground (power supply ground)                5.
+//
+//
+// we are using the "Particle.function" function to actuate the relays to pass "on" or "off" which turn on
+// and off the power sockets and solenoid valves. 
+//
+//  THIS IS PHOTON 2 CODEBASE           THIS IS PHOTON 2 CODEBASE
+// 
+//
+//
+//
+//
+//
+String ph_inputstring = "";                              //a string to hold incoming data from the PC
+String ph_sensorstring = "";                             //a string to hold the data from the Atlas Scientific product
+boolean ph_input_string_complete = false;                //have we received all the data from the PC
+boolean ph_sensor_string_complete = false;               //have we received all the data from the Atlas Scientific product
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+int TempReadPin=A0;               // A0 is connected to temperature sensor output pin reads in mV
+int TempPow=D3;                   // D2 is connected to temperature power and is turned on before a temperature reading and off afterward
+
+int temp=0;                     // where the initial temperature data is stored
+
+
+
+double pH=0;                                             //used to hold a floating point number that is the pH
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+void setup() {                                        //set up the hardware
+  Serial.begin(9600);                                 //set baud rate for the hardware serial port_0 to 9600
+  Serial1.begin(9600);                               //set baud rate for the software serial port to 9600
+  ph_inputstring.reserve(10);                            //set aside some bytes for receiving data from the PC
+  ph_sensorstring.reserve(30);                           //set aside some bytes for receiving data from Atlas Scientific produc
+ 
+  
+  Particle.variable("ph", pH);                          //Exposing the variables to the Internet
+  Particle.variable("temp", temp);
+
+  pinMode(TempReadPin, INPUT_PULLUP);      // A0 INPUT_PULLUP is a better way to get analog readings on the photon reads in mV
+  pinMode(TempPow, OUTPUT);                // D2 pin is connected to temperature power pin for cleaner readings
+
+  digitalWrite(TempPow,LOW);                // set power pins low at first!
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  
+void serialEvent() {                                  //if the hardware serial port_0 receives a char
+  ph_inputstring = Serial.readStringUntil(13);           //read the string until we see a <CR>
+  ph_input_string_complete = true;                       //set the flag used to tell if we have received a completed string from the PC
+
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void loop() {                                         //here we go...
+
+  if (ph_input_string_complete) {                        //if a string from the PC has been received in its entirety
+    Serial1.print(ph_inputstring);                      //send that string to the Atlas Scientific product
+    Serial1.print('\r');                                 //add a <CR> to the end of the string
+    ph_inputstring = "";                                //clear the string
+    ph_input_string_complete = false;                    //reset the flag used to tell if we have received a completed string from the PC
+	}
+
+  if (Serial1.available() > 0) {                     //if we see that the Atlas Scientific product has sent a character
+    char ph_inchar = (char)Serial1.read();              //get the char we just received
+    ph_sensorstring += ph_inchar;                           //add the char to the var called sensorstring
+    if (ph_inchar == '\r') {                             //if the incoming character is a <CR>
+      ph_sensor_string_complete = true;                  //set the flag
+    }
+  }
+
+
+  if (ph_sensor_string_complete == true) {              //if a string from the Atlas Scientific product has been received in its entirety
+    Serial.println(ph_sensorstring);                    //send that string to the PC's serial monitor
+    if (isdigit(ph_sensorstring[0])) {                  //if the first character in the string is a digit
+      pH = ph_sensorstring.toFloat();                   //convert the string to a floating point number so it can be evaluated by the Arduino
+//      if (pH >= 7.0) {                                //if the pH is greater than or equal to 7.0
+//        Serial.println("high");                       //print "high" this is demonstrating that the Arduino is evaluating the pH as a number and not as a string
+//      }
+//      if (pH <= 6.999) {                              //if the pH is less than or equal to 6.999
+//        Serial.println("low");                        //print "low" this is demonstrating that the Arduino is evaluating the pH as a number and not as a string
+//      }
+    }
+    ph_sensorstring = "";                               //clear the string
+    ph_sensor_string_complete = false;                  //reset the flag used to tell if we have received a completed string from the Atlas Scientific product
+  }  
+    temp = getTemp();                                   //get that temperature from the probe! 
+
+Particle.variable("ph", pH);   
+//delay(2000);
+//runquantity = runquantity +=1;
+//Delivertemp                                           //Call the update set temp command so the pH value is right. 
+
+//Particle.publish("temp", String(temp), 60, PRIVATE);  //This publishes the temperature to the cloud for other photons. 
+
+
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////  
+float getTemp(void)                     // the getTemp function
+{
+  float v_out;                          // voltage output from temp sensor in mV
+  float temp;                           // the final temperature is stored here
+  digitalWrite(TempPow, HIGH);          // power up the sensor (its only 3.3V on the Photon)
+  delay(20);                            // delay 20 milliseconds
+  v_out = analogRead(TempReadPin);      // get the voltage reading from pin A0
+  delay(20);                            // delay 20 milliseconds
+  digitalWrite(TempPow, LOW);           // power off the temperature sensor
+  v_out *= 3300.0 / 4095.0;             // the temp sensor uses mv to read this so 3300.
+  temp= 0.0512 * v_out - 20.5128;       // !MATH! to convert reading to celcius
+  return temp;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*void Delivertemp(void)                  //This is attempting to update the set Temperature on the stamp. It currently isnt doing anything
+  {
+         // serial1print tepm caringe return
+      Serial1.printlnf("T",0,'/r');
+    Serial1.print('/r');  
+       }
+  
+  ///////////////////////////
+  
+ // float QueryTemp(void)
+*/  
+  
+  
+  
